@@ -137,7 +137,8 @@ jobs:
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_KEY }}
           source: "docker-compose.production.yml"
-          target: "~/taski"
+          target: "taski"          # ← исправлено
+          strip_components: 0
 
       - name: Deploy on server
         uses: appleboy/ssh-action@master
@@ -155,7 +156,7 @@ jobs:
             pwd
             ls -la
 
-            cd ~/taski
+            cd taski
 
             echo "=== Pulling new images ==="
             sudo docker compose -f docker-compose.production.yml pull
