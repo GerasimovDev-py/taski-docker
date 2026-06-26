@@ -130,57 +130,35 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # ==================== DEBUG SSH CONNECTION ====================
-      - name: Setup SSH key and debug connection
-        run: |
-          mkdir -p ~/.ssh
-          
-          cat > ~/.ssh/deploy_key << 'EOL'
------BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-QyNTUxOQAAACC74tldN1sxhFaR2OWalhrp8QQQgKOSrrNfxHvjRxJm2wAAAKg80BEAPNAR
-AAAAAAtzc2gtZWQyNTUxOQAAACC74tldN1sxhFaR2OWalhrp8QQQgKOSrrNfxHvjRxJm2w
-AAAEBuWvcDjdN/OcB9WDUgrEGxRAACYy5Jkv0SZwuASOnyXbvi2V03WzGEVpHY5ZqWGunx
-BBCAo5Kus1/Ee+NHEmbbAAAAH3Byb2plY3RtZWRpYXN0dWRpbzMwNkBnbWFpbC5jb20BAg
-MEBQY=
------END OPENSSH PRIVATE KEY-----
-EOL
-
-          chmod 600 ~/.ssh/deploy_key
-          
-          echo "=== SSH Key fingerprint ==="
-          ssh-keygen -lf ~/.ssh/deploy_key
-          
-          echo "=== Public key extracted from private key ==="
-          ssh-keygen -y -f ~/.ssh/deploy_key
-          
-          echo "=== Adding host to known_hosts ==="
-          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts 2>&1 || echo "ssh-keyscan failed"
-          
-          echo "=== Trying SSH connection (verbose) ==="
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -v ${{ secrets.USER }}@${{ secrets.HOST }} "echo '=== SSH CONNECTION SUCCESSFUL ==='; whoami; pwd; ls -la; id; echo '=== Server ready ==='"
-        timeout-minutes: 3
-
-      # ==================== COPY docker-compose ====================
-      - name: Copy docker-compose.yml to server
-        run: |
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:~/taski/
-
-      # ==================== DEPLOY ====================
-      - name: Deploy on server
-        run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.USER }}@${{ secrets.HOST }} << 'EOF'
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          strict_host_key_checking: false
+          script: |
             set -e
-            cd taski
-            echo "=== Pulling images ==="
+            echo "=== Connected successfully to server ==="
+            whoami
+            pwd
+            ls -la
+            
+            cd taski || { echo "Directory taski not found!"; exit 1; }
+            
+            echo "=== Pulling new images ==="
             sudo docker compose -f docker-compose.production.yml pull
+            
             echo "=== Restarting containers ==="
             sudo docker compose -f docker-compose.production.yml down
             sudo docker compose -f docker-compose.production.yml up -d
+            
             echo "=== Running migrations ==="
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py migrate
-            echo "=== Collecting static ==="
+            
+            echo "=== Collecting static files ==="
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic --noinput
             sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/ || true
+            
             echo "=== Deployment completed successfully ==="
-          EOF
