@@ -130,24 +130,22 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
       
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
       
       - name: Debug SSH connection
         run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.USER }}@${{ secrets.HOST }} "echo 'Connected successfully' && whoami && pwd && ls -la"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@${{ secrets.HOST }} "echo 'Connected successfully' && whoami && pwd && ls -la"
       
       - name: Copy docker-compose.yml via scp
         run: |
-          scp -i ~/.ssh/deploy_key docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:~/taski/
+          scp -o StrictHostKeyChecking=no docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:~/taski/
       
       - name: Executing remote ssh commands to deploy
         run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.USER }}@${{ secrets.HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@${{ secrets.HOST }} << 'EOF'
             cd taski
             sudo docker compose -f docker-compose.production.yml pull
             sudo docker compose -f docker-compose.production.yml down
