@@ -130,26 +130,20 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
       
-      - name: Copy docker-compose.yml via scp
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: 22
-          source: "docker-compose.production.yml"
-          target: "taski"
-          debug: true
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
       
-      - name: Executing remote ssh commands to deploy
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: 22
-          debug: true
-          script: |
+      - name: Copy docker-compose.yml to server
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key docker-compose.production.yml ${{ secrets.USER }}@${{ secrets.HOST }}:~/taski/
+      
+      - name: Deploy on server
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key ${{ secrets.USER }}@${{ secrets.HOST }} << 'EOF'
             cd taski
             sudo docker compose -f docker-compose.production.yml pull
             sudo docker compose -f docker-compose.production.yml down
@@ -157,3 +151,4 @@ jobs:
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py migrate
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic
             sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/
+          EOF
